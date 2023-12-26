@@ -1,12 +1,9 @@
 #include <windows.h>
 #include <cassert>
 #include <cstdint>
+#include <engextcpp.hpp>
 
 #include "memscanslot.h"
-
-// TODO: REMOVE
-#include <engextcpp.hpp>
-// TODO: REMOVE
 
 namespace 
 {
@@ -40,6 +37,9 @@ namespace
         assert(pNumEntriesOut);
         assert((reinterpret_cast<uintptr_t>(pMemStart) & (sizeof(TScanType) - 1)) == 0);
 
+        const ULONG ScanSize = reinterpret_cast<uintptr_t>(pMemEnd) - reinterpret_cast<uintptr_t>(pMemStart);
+        ExtRemoteData ScanSpace("ScanSpace", reinterpret_cast<ULONG64>(pMemStart), ScanSize);
+
         *pNumEntriesOut = 0;
         if (slot.GetSlotSize() != 0 && slot.GetSlotSize() != sizeof(TScanType))
         {
@@ -61,13 +61,15 @@ namespace
             // If there are any preexisting entries, we'll search within those results and ignore the start/end range.
             // Compact the array as we go and keep all valid entries from index zero upwards (if any still exists). Valid
             // entries are entries which have met all search criteria seen by this slot between clears.
-            uint16_t lastGoodIndex = slot.GetNumEntries() - 1;
-            for (uint16_t i = slot.GetNumEntries() - 1; i >= 0; --i)
+            int16_t lastGoodIndex = static_cast<int16_t>(slot.GetNumEntries()) - 1;
+            for (int16_t i = static_cast<int16_t>(slot.GetNumEntries()) - 1; i >= 0; --i)
             {
                 ScanHitEntry& currentEntry = pEntries[i];
                 assert(currentEntry.pHitAddress);
 
-                if (*static_cast<TScanType*>(currentEntry.pHitAddress) == searchValue)
+                ExtRemoteData EntryData(reinterpret_cast<ULONG64>(currentEntry.pHitAddress), sizeof(TScanType));
+                const TScanType EntryValue = EntryData.GetData(sizeof(TScanType));
+                if (EntryValue == searchValue)
                 {
                     // Matching entry, we'll keep this one
                     ++numEntriesFound;
@@ -76,7 +78,7 @@ namespace
                 }
                 else
                 {
-                    assert(lastGoodIndex > 0);
+                    assert(lastGoodIndex >= 0);
 
                     // Swap this invalid entry out and we'll sort later
                     SwapEntries(pEntries, lastGoodIndex, i);
@@ -91,15 +93,24 @@ namespace
         }
         else
         {
-            // We should not have any active entries at this point
-            assert(slot.GetNumEntries() == 0);
+            void* pLocalScanMemory = new uint8_t[ScanSize];
+            TScanType* pLocalTypedArray = static_cast<TScanType*>(pLocalScanMemory);
 
-            TScanType* pSearch = pMemStart;
-            while (pSearch != pMemEnd)
+            constexpr bool MustReadAll = true;
+            const ULONG BytesRead = ScanSpace.ReadBuffer(pLocalScanMemory, ScanSize, MustReadAll);
+            assert(BytesRead == ScanSize);
+
+            size_t index = 0;
+            size_t totalRead = 0;
+
+            // Only used for tracking the original address and loop conditions,
+            // don't directly read from the remote process address space!
+            const size_t ElementsToScan = ScanSize / sizeof(TScanType);
+            while (index < ElementsToScan)
             {
-                if (*pSearch == searchValue)
+                if (pLocalTypedArray[index] == searchValue)
                 {
-                    pEntries[slot.GetNumEntries()].pHitAddress = pSearch;
+                    pEntries[numEntriesFound].pHitAddress = pMemStart + index;
                     ++numEntriesFound;
                 }
 
@@ -107,8 +118,10 @@ namespace
                 {
                     break;
                 }
-                ++pSearch;
+                ++index;
             }
+
+            delete[] pLocalScanMemory;
         }
 
         *pNumEntriesOut = numEntriesFound;
@@ -137,6 +150,7 @@ bool MemScanSlot::ScanForByte(uint8_t* pMemStart, uint8_t* pMemEnd, uint8_t sear
     }
 
     m_numEntries = numEntriesFound;
+    m_slotSize = 1;
     return true;
 }
 
@@ -149,6 +163,7 @@ bool MemScanSlot::ScanForHalfWord(uint16_t* pMemStart, uint16_t* pMemEnd, uint16
     }
 
     m_numEntries = numEntriesFound;
+    m_slotSize = 2;
     return true;
 }
 
@@ -161,6 +176,7 @@ bool MemScanSlot::ScanForWord(uint32_t* pMemStart, uint32_t* pMemEnd, uint32_t s
     }
 
     m_numEntries = numEntriesFound;
+    m_slotSize = 4;
     return true;
 }
 

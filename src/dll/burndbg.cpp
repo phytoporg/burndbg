@@ -84,7 +84,7 @@ void EXT_CLASS::PrintSlot(uint16_t slotIndex)
     }
     else
     {
-        Out("Slot %d:\n");
+        Out("Slot %d:\n", slotIndex);
 
         const uint8_t SlotSize = Slot.GetSlotSize();
         ScanHitEntry* pEntries = Slot.GetEntries();
@@ -92,20 +92,19 @@ void EXT_CLASS::PrintSlot(uint16_t slotIndex)
         {
             const ScanHitEntry& Entry = pEntries[i];
             assert(Entry.pHitAddress);
+
+            ExtRemoteData EntryData(reinterpret_cast<ULONG64>(Entry.pHitAddress), SlotSize);
             if (SlotSize == 1)
             {
-                const auto pAddr = static_cast<uint8_t*>(Entry.pHitAddress);
-                Out("%d:\t0x%p\t0x%02X\n", i, pAddr, *pAddr);
+                Out("%d:\t0x%p\t0x%02X\n", i, Entry.pHitAddress, EntryData.GetUchar());
             }
             else if (SlotSize == 2)
             {
-                const auto pAddr = static_cast<uint16_t*>(Entry.pHitAddress);
-                Out("%d:\t0x%p\t0x%04X\n", i, pAddr, *pAddr);
+                Out("%d:\t0x%p\t0x%04X\n", i, Entry.pHitAddress, EntryData.GetUshort());
             }
             else if (SlotSize == 4)
             {
-                const auto pAddr = static_cast<uint32_t*>(Entry.pHitAddress);
-                Out("%d:\t0x%p\t0x%08X\n", i, pAddr, *pAddr);
+                Out("%d:\t0x%p\t0x%08X\n", i, Entry.pHitAddress, EntryData.GetUlong());
             }
         }
         Out("Listed %d entries\n", Slot.GetNumEntries());
