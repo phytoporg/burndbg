@@ -88,7 +88,7 @@ namespace
 
             if (numEntriesFound && numEntriesFound < slot.GetNumEntries())
             {
-                Sort(pEntries, 0, numEntriesFound);
+                Sort(pEntries, 0, numEntriesFound - 1);
             }
         }
         else

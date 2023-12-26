@@ -148,7 +148,10 @@ EXT_COMMAND(readb,
     const ULONG64 FlippedAddress = Address ^ 1;
     ExtRemoteTyped Value = PR.ArrayElement(FlippedAddress & SEK_PAGE_MASK);
 
-    Out("$%06X = 0x%02X\n", Address, Value.GetUchar());
+    // TODO: actually use the above computation instead of this hack
+    void* pProcAddress = reinterpret_cast<uint8_t*>(GetM68KRAMBase().GetPtr()) + (FlippedAddress & 0xFFFF);
+
+    Out("$%06X (0x%p) = 0x%02X\n", Address, pProcAddress, Value.GetUchar());
 }
 
 //----------------------------------------------------------------------------
@@ -159,7 +162,7 @@ EXT_COMMAND(readb,
 //
 //----------------------------------------------------------------------------
 EXT_COMMAND(memscan,
-    "Scan all of M68K RAM space and save the results to a slot, or scan against the resulting addresses already saved within a slot",
+    "Scan all of M68K Working RAM space and save the results to a slot, or scan against the resulting addresses already saved within a slot",
     "{;e,r;slot;TargetSlot}{;e,r;size;ValueSize}{;e,r;value;SearchValue}")
 {
     const uint16_t SlotIndex = static_cast<uint16_t>(GetUnnamedArgU64(0));
@@ -181,7 +184,7 @@ EXT_COMMAND(memscan,
     MemScanSlot& targetSlot = m_scanSlots[SlotIndex];
 
     void* pMemStart = reinterpret_cast<void*>(GetM68KRAMBase().GetPtr());
-    void* pMemEnd = static_cast<uint8_t*>(pMemStart) + 0x10000;
+    void* pMemEnd = static_cast<uint8_t*>(pMemStart) + 0x20000;
     bool success = true;
     if (ValueSize == 1)
     {
@@ -208,7 +211,15 @@ EXT_COMMAND(memscan,
                 Value & 0xFFFFFFFF);
     }
 
-    PrintSlot(SlotIndex);
+    if (!success)
+    {
+        // TODO: more detailed info
+        Out("Failed to perform memory scan on slot %d\n", SlotIndex);
+    }
+    else
+    {
+        PrintSlot(SlotIndex);
+    }
 }
 
 EXT_COMMAND(slotclear,
